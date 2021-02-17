@@ -57,6 +57,7 @@ type
     ChkMakefileLaz: TButton;
     actFileExit: TFileExit;
     actFileSave: TFileSaveAs;
+    WioBtn: TBitBtn;
     FPCVersionLabel: TLabel;
     FPCTagLabel: TLabel;
     IniPropStorageApp: TIniPropStorage;
@@ -72,7 +73,7 @@ type
     MemoAddTag: TMemo;
     memoSummary: TMemo;
     MenuItem1: TMenuItem;
-    EmbeddedBtn: TBitBtn;
+    PicoBtn: TBitBtn;
     MenuItem2: TMenuItem;
     MEnglishlanguage: TMenuItem;
     MChineseCNlanguage: TMenuItem;
@@ -85,7 +86,6 @@ type
     MLazarusBugs: TMenuItem;
     MIssuesGitHub: TMenuItem;
     MIssuesForum: TMenuItem;
-    mORMot2Btn: TBitBtn;
     OPMBtn: TBitBtn;
     PageControl1: TPageControl;
     radgrpCPU: TRadioGroup;
@@ -1894,6 +1894,10 @@ var
   aFPCTarget:string;
   aLazarusTarget:string;
   aModule:string;
+  success:boolean;
+  aCPU:TCPU;
+  aOS:TOS;
+  aSUBARCH:TSUBARCH;
 begin
   s:='';
 
@@ -1939,13 +1943,21 @@ begin
   end;
   }
 
-  if Sender=EmbeddedBtn then
+  if Sender=PicoBtn then
   begin
-    s:='Going to install FPC and Lazarus for SAM embedded.';
+    s:='Going to install FPC and Lazarus for Raspberry Pico.';
     aFPCTarget:='embedded-mir';
     aLazarusTarget:='embedded';
     //aModule:='mbf,pxl';
-    aModule:='mbf';
+    //aModule:='mbf';
+  end;
+
+  if Sender=WioBtn then
+  begin
+    s:='Going to install FPC and Lazarus for Wio Terminal.';
+    aFPCTarget:='embedded-mir';
+    aLazarusTarget:='embedded';
+    //aModule:='mbf-freertos';
   end;
 
   if Sender=mORMotBtn then
@@ -1955,12 +1967,6 @@ begin
     //aModule:='mORMot,zeos';
   end;
 
-  if Sender=mORMot2Btn then
-  begin
-    s:='Going to install the mORMot2.';
-    aModule:='mORMot2';
-    //aModule:='mORMot2,zeos';
-  end;
 
   if Sender=OPMBtn then
   begin
@@ -2020,7 +2026,48 @@ begin
     end;
     {$endif}
 
-    RealRun;
+    success:=RealRun;
+    //success:=true;
+
+    if success then
+    begin
+
+      if Sender=PicoBtn then
+      begin
+        s:='Going to install FPC cross-compiler for Raspberry Pico.';
+        aCPU:=TCPU.arm;
+        aOS:=TOS.embedded;
+        aSUBARCH:=TSUBARCH.armv6;
+      end;
+
+      if Sender=WioBtn then
+      begin
+        s:='Going to install FPC cross-compiler for Wio Terminal.';
+        aCPU:=TCPU.arm;
+        aOS:=TOS.freertos;
+        aSUBARCH:=TSUBARCH.armv7em;
+      end;
+
+      if (Sender=PicoBtn) OR (Sender=WioBtn) then
+      begin
+        radgrpCPU.ItemIndex:=radgrpCPU.Items.IndexOf(GetCPU(aCPU));
+        radgrpOS.ItemIndex:=radgrpOS.Items.IndexOf(GetOS(aOS));
+        Form2.SetCrossAvailable(aCPU,aOS,aSUBARCH,true);
+        SubarchForm.SetSelectedSubArch(aCPU,aOS,aSUBARCH);
+
+        AddMessage(s+'.');
+        sStatus:=s;
+
+        success:=ButtonProcessCrossCompiler(nil);
+
+        if success
+           then memoSummary.Lines.Append('Cross-compiler install/update ok.')
+           else memoSummary.Lines.Append('Failure during install update of cross-compiler !!');
+
+        memoSummary.Lines.Append('');
+      end;
+
+    end;
 
   finally
     DisEnable(Sender,True);
@@ -2656,6 +2703,11 @@ begin
           // Set arm abi build option
           FPCupManager.FPCOPT:=Form2.GetCrossARMFPCStr(FPCupManager.CrossCPU_Target,FPCupManager.CrossOS_Target,FPCupManager.CrossOS_SubArch);
         end;
+
+        // Set ABI option
+        //FPCupManager.CrossOS_ABI:=TABI.abiNone;
+
+
       end;
 
       // Set FPC cross-compile options
@@ -2975,6 +3027,8 @@ begin
             {$endif}
           end;
 
+          //{$IF defined(CPUAARCH64) AND defined(DARWIN)}
+          {$ifndef MSWINDOWS}
           if FPCupManager.CrossOS_Target=TOS.freertos then
           begin
             // use embedded arm tools for freertos arm:
@@ -2983,6 +3037,7 @@ begin
               BinsFileName:=StringReplace(BinsFileName,'FreeRTOS','Embedded',[]);
             end;
           end;
+          {$endif}
 
           // All ready !!
 
@@ -3184,8 +3239,11 @@ begin
                     aList.Add('You can find them at:');
                     aList.Add(DownloadURL);
                     s:=IncludeTrailingPathDelimiter(sInstallDir)+BinPath+DirectorySeparator+FPCUP_ACKNOWLEDGE;
-                    SysUtils.DeleteFile(s);
-                    aList.SaveToFile(s);
+                    If DirectoryExists(ExtractFileDir(s)) then
+                    begin
+                      SysUtils.DeleteFile(s);
+                      aList.SaveToFile(s);
+                    end;
                   finally
                     aList.Free;
                   end;
@@ -3217,9 +3275,11 @@ begin
             begin
               if ((FPCupManager.CrossCPU_Target=TCPU.arm) AND (FPCupManager.CrossOS_Target=TOS.freertos)) then
               begin
+                // Use deticated libs by Michael Ring !
                 s:='10.4.3';
-                LibsFileName:='FreeRTOS-'+s+'-for-for-FreePascal.zip';
-                DownloadURL:='https://github.com/michael-ring/freertos4fpc/releases/download/v'+s+'-1/'+LibsFileName;
+                MinorVersion:=3;
+                LibsFileName:='FreeRTOS-'+s+'-for-FreePascal.zip';
+                DownloadURL:='https://github.com/michael-ring/freertos4fpc/releases/download/v'+s+'-'+InttoStr(MinorVersion)+'/'+LibsFileName;
                 TargetFile := IncludeTrailingPathDelimiter(FPCupManager.TempDirectory)+LibsFileName;
                 SysUtils.DeleteFile(TargetFile);
                 success:=DownLoad(FPCupManager.UseWget,DownloadURL,TargetFile,FPCupManager.HTTPProxyHost,FPCupManager.HTTPProxyPort,FPCupManager.HTTPProxyUser,FPCupManager.HTTPProxyPassword);
@@ -3244,7 +3304,6 @@ begin
                 end;
               end;
             end;
-
 
             if MissingCrossLibs then
             begin
@@ -3368,8 +3427,11 @@ begin
                     aList.Add('You can find them at:');
                     aList.Add(DownloadURL);
                     s:=IncludeTrailingPathDelimiter(sInstallDir)+LibPath+DirectorySeparator+FPCUP_ACKNOWLEDGE;
-                    SysUtils.DeleteFile(s);
-                    aList.SaveToFile(s);
+                    if DirectoryExists(ExtractFileDir(s)) then
+                    begin
+                      SysUtils.DeleteFile(s);
+                      aList.SaveToFile(s);
+                    end;
                   finally
                     aList.Free;
                   end;
@@ -3626,13 +3688,13 @@ end;
 
 procedure TForm1.Edit1Change(Sender: TObject);
 begin
-  sInstallDir:=InstallDirEdit.Text;
+  sInstallDir:=SetDirSeparators(InstallDirEdit.Text);
   if DirectoryExists(sInstallDir) then GetFPCUPSettings(IncludeTrailingPathDelimiter(sInstallDir));
 end;
 
 procedure TForm1.Edit1KeyUp(Sender: TObject; var Key: Word; Shift: TShiftState);
 begin
-  sInstallDir:=InstallDirEdit.Text;
+  sInstallDir:=SetDirSeparators(InstallDirEdit.Text);
   if DirectoryExists(sInstallDir) then GetFPCUPSettings(IncludeTrailingPathDelimiter(sInstallDir));
 end;
 

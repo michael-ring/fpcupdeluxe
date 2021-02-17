@@ -1611,6 +1611,13 @@ begin
       // By setting the target.
       FInstaller.SetTarget(FParent.CrossCPU_Target,FParent.CrossOS_Target,FParent.CrossOS_SubArch);
       FInstaller.CrossOPT:=FParent.CrossOPT;
+      if AnsiContainsText(FParent.CrossOPT,'-CAEABIHF') then
+        FInstaller.SetABI(TABI.eabihf)
+      else
+        if AnsiContainsText(FParent.CrossOPT,'-CAEABI') then
+          FInstaller.SetABI(TABI.eabi)
+      else
+        FInstaller.SetABI(TABI.default);
       FInstaller.CrossLibraryDirectory:=FParent.CrossLibraryDirectory;
       FInstaller.CrossToolsDirectory:=FParent.CrossToolsDirectory;
     end

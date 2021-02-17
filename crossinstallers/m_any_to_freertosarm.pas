@@ -59,6 +59,9 @@ const
   StaticLibName2='libc_nano.a';
 var
   aSubarchName:string;
+  aIndex:integer;
+  aABI:TABI;
+  aPath:TStringArray;
 begin
   result:=FLibsFound;
 
@@ -100,13 +103,77 @@ begin
 
   // search local paths based on libbraries provided for or adviced by https://github.com/michael-ring/freertos4fpc
   if ((not result) AND (FSubArch<>TSUBARCH.saNone)) then
+  begin
     result:=SimpleSearchLibrary(BasePath,ConcatPaths([DirName,'lib',aSubarchName]),StaticLibName2);
+    if (not result) then
+    begin
+      for aABI in TABI do
+      begin
+        if aABI=TABI.default then continue;
+        result:=SimpleSearchLibrary(BasePath,ConcatPaths([DirName,'lib',aSubarchName,GetABI(aABI)]),StaticLibName2);
+        if result then break;
+      end;
+    end;
+  end;
+
+
+  {
+  if (SubArch<>TSUBARCH.saNone) then
+    AddFPCCFGSnippet('#IFDEF CPU'+UpperCase(Self.SubArchName));
+  for i:=0 to FCrossOpts.Count-1 do
+  begin
+    if ((SubArch<>TSUBARCH.saNone) AND AnsiContainsText(FCrossOpts[i],'-Cp'+Self.SubArchName)) then continue;
+    AddFPCCFGSnippet(FCrossOpts[i]);
+  end;
+  if (SubArch<>TSUBARCH.saNone) then
+    AddFPCCFGSnippet('#ENDIF CPU'+UpperCase(Self.SubArchName));
+  }
+
 
   if result then
   begin
-    SearchLibraryInfo(true);
     FLibsFound:=True;
+
+    //aIndex:=GetDirs(FLibsPath,aPath);
+    aPath:=FLibsPath.Split(DirectorySeparator);
+
+    // Perform Subarch magic for libpath
+    if (FSubArch<>TSUBARCH.saNone) then
+    begin
+      aIndex:=StringsSame(aPath,aSubarchName);
+      if (aIndex<>-1) then
+        aPath[aIndex]:=FPC_SUBARCH_MAGIC;
+    end;
+
+    // Perform ABI magic for libpath
+    aIndex:=StringsSame(aPath,RegisterName);
+    if (aIndex<>-1) then
+    begin
+      for aABI in TABI do
+      begin
+        if aABI=TABI.default then continue;
+        aIndex:=StringsSame(aPath,GetABI(aABI));
+        if (aIndex<>-1) then
+        begin
+          aPath[aIndex]:=FPC_ABI_MAGIC;
+          break;
+        end;
+      end;
+    end;
+
+    FLibsPath:=ConcatPaths(aPath);
+
+    // If we do not have magic, add subarch to enclose
+    if ((SubArch<>TSUBARCH.saNone) AND (Pos('$',FLibsPath)=0)) then
+      AddFPCCFGSnippet('#IFDEF CPU'+UpperCase(SubArchName));
+
     AddFPCCFGSnippet('-Fl'+IncludeTrailingPathDelimiter(FLibsPath));
+
+    // If we do not have magic, add subarch to enclose
+    if ((SubArch<>TSUBARCH.saNone) AND (Pos('$',FLibsPath)=0)) then
+      AddFPCCFGSnippet('#ENDIF CPU'+UpperCase(SubArchName));
+
+    SearchLibraryInfo(true);
   end;
 end;
 

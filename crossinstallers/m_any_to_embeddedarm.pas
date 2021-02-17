@@ -60,9 +60,12 @@ end;
 
 function TAny_Embeddedarm.GetLibs(Basepath:string): boolean;
 const
-  LibName='libgcc.a';  // is this correct ??
+  LibName='libgcc.a';
 var
   aSubarchName:string;
+  aIndex:integer;
+  aABI:TABI;
+  aPath:TStringArray;
 begin
   // Arm-embedded does not need libs by default, but user can add them.
   result:=FLibsFound;
@@ -80,25 +83,68 @@ begin
   result:=SearchLibrary(Basepath,LibName);
   // search local paths based on libraries provided for or adviced by fpc itself
   if not result then
-     if (FSubArch<>TSUBARCH.saNone) then result:=SimpleSearchLibrary(BasePath,IncludeTrailingPathDelimiter(DirName)+aSubarchName,LibName);
-  if not result then
      result:=SimpleSearchLibrary(BasePath,DirName,LibName);
+
+  if ((not result) AND (FSubArch<>TSUBARCH.saNone)) then
+  begin
+    result:=SimpleSearchLibrary(BasePath,ConcatPaths([DirName,aSubarchName]),LibName);
+    if (not result) then
+    begin
+      for aABI in TABI do
+      begin
+        if aABI=TABI.default then continue;
+        result:=SimpleSearchLibrary(BasePath,ConcatPaths([DirName,aSubarchName,GetABI(aABI)]),LibName);
+        if result then break;
+      end;
+    end;
+  end;
 
   if result then
   begin
     FLibsFound:=True;
-    //todo: check if -XR is needed for fpc root dir Prepend <x> to all linker search paths
 
+    //aIndex:=GetDirs(FLibsPath,aPath);
+    aPath:=FLibsPath.Split(DirectorySeparator);
+
+    // Perform Subarch magic for libpath
     if (FSubArch<>TSUBARCH.saNone) then
     begin
-      if (Pos(aSubarchName,FLibsPath)>0) then
-        // we have a libdir with a subarch inside: make it universal !!
-        FLibsPath:=StringReplace(FLibsPath,aSubarchName,'$FPCSUBARCH',[]);
+      aIndex:=StringsSame(aPath,aSubarchName);
+      if (aIndex<>-1) then
+        aPath[aIndex]:=FPC_SUBARCH_MAGIC;
     end;
 
-    AddFPCCFGSnippet('-Fl'+IncludeTrailingPathDelimiter(FLibsPath)); {buildfaq 1.6.4/3.3.1: the directory to look for the target libraries ... just te be safe ...}
-    SearchLibraryInfo(result);
+    // Perform ABI magic for libpath
+    aIndex:=StringsSame(aPath,RegisterName);
+    if (aIndex<>-1) then
+    begin
+      for aABI in TABI do
+      begin
+        if aABI=TABI.default then continue;
+        aIndex:=StringsSame(aPath,GetABI(aABI));
+        if (aIndex<>-1) then
+        begin
+          aPath[aIndex]:=FPC_ABI_MAGIC;
+          break;
+        end;
+      end;
+    end;
+
+    FLibsPath:=ConcatPaths(aPath);
+
+    // If we do not have magic, add subarch to enclose
+    if ((SubArch<>TSUBARCH.saNone) AND (Pos('$',FLibsPath)=0)) then
+      AddFPCCFGSnippet('#IFDEF CPU'+UpperCase(SubArchName));
+
+    AddFPCCFGSnippet('-Fl'+IncludeTrailingPathDelimiter(FLibsPath));
+
+    // If we do not have magic, add subarch to enclose
+    if ((SubArch<>TSUBARCH.saNone) AND (Pos('$',FLibsPath)=0)) then
+      AddFPCCFGSnippet('#ENDIF CPU'+UpperCase(SubArchName));
+
+    SearchLibraryInfo(true);
   end;
+
   if not result then
   begin
     //libs path is optional; it can be empty

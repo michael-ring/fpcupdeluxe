@@ -143,9 +143,9 @@ const
     );
   {$endif}
 
-  SnipMagicBegin='# begin fpcup do not remove '; //look for this/add this in fpc.cfg cross-compile snippet. Note: normally followed by FPC CPU-os code
-  SnipMagicEnd='# end fpcup do not remove'; //denotes end of fpc.cfg cross-compile snippet
-  FPCSnipMagic='# If you don''t want so much verbosity use'; //denotes end of standard fpc.cfg
+  SnipMagicBegin = '# begin fpcup do not remove '; //look for this/add this in fpc.cfg cross-compile snippet. Note: normally followed by FPC CPU-os code
+  SnipMagicEnd   = '# end fpcup do not remove'; //denotes end of fpc.cfg cross-compile snippet
+  FPCSnipMagic   = '# If you don''t want so much verbosity use'; //denotes end of standard fpc.cfg
 
   //Sequence contants for statemachine
 
@@ -279,6 +279,7 @@ type
     FCrossCPU_Target       : TCPU; //When cross-compiling: CPU, e.g. x86_64
     FCrossOS_Target        : TOS; //When cross-compiling: OS, e.g. win64
     FCrossOS_SubArch       : TSUBARCH; //When cross-compiling for embedded: CPU, e.g. for Teensy SUBARCH=ARMV7EM
+    FCrossOS_ABI           : TABI; //When cross-compiling for arm: hardfloat or softfloat calling convention
     FCrossToolsDirectory   : string;
     FCrossLibraryDirectory : string;
     procedure SetURL(value:string);
@@ -436,6 +437,8 @@ type
     property CompilerOptions: string write FCompilerOptions;
     // SubArch for target embedded
     property CrossOS_SubArch: TSUBARCH read FCrossOS_SubArch;
+    // When cross-compiling for arm: hardfloat or softfloat calling convention
+    property CrossOS_ABI: TABI read FCrossOS_ABI;
     // Options for cross compiling. User can specify his own, but cross compilers can set defaults, too
     property CrossOPT: string read FCrossOPT write FCrossOPT;
     property CrossToolsDirectory:string read FCrossToolsDirectory write FCrossToolsDirectory;
@@ -491,6 +494,7 @@ type
     function GetCompilerName(Cpu_Target:string):string;overload;
     function GetCrossCompilerName(Cpu_Target:TCPU):string;
     procedure SetTarget(aCPU:TCPU;aOS:TOS;aSubArch:TSUBARCH);virtual;
+    procedure SetABI(aABI:TABI);
     // append line ending and write to log and, if specified, to console
     procedure WritelnLog(msg: TStrings; ToConsole: boolean = true);overload;
     procedure WritelnLog(msg: string; ToConsole: boolean = true);overload;
@@ -2956,6 +2960,28 @@ begin
   FCrossOS_SubArch:=aSubArch;
 end;
 
+procedure TInstaller.SetABI(aABI:TABI);
+begin
+  //
+  if (FCrossCPU_Target=TCPU.arm) then
+    FCrossOS_ABI:=aABI
+  else
+  begin
+    if (FCrossOS_Target=TOS.ios) then
+    begin
+      FCrossOS_ABI:=aABI;
+      if (aABI<>TABI.default) OR (aABI<>TABI.aarch64ios) then
+        raise Exception.CreateFmt('Invalid ARM ABI "%s" for SetABI for iOS.', [aABI]);
+    end
+    else
+    begin
+      FCrossOS_ABI:=TABI.default;
+      if (aABI<>TABI.default) then
+        raise Exception.CreateFmt('Invalid ARM ABI "%s" for SetABI.', [aABI]);
+    end;
+  end;
+end;
+
 function TInstaller.GetSuitableRepoClient:TRepoClient;
 begin
   result:=nil;
@@ -4195,6 +4221,7 @@ begin
   FCrossCPU_Target:=TCPU.cpuNone;
   FCrossOS_Target:=TOS.osNone;
   FCrossOS_SubArch:=TSUBARCH.saNone;
+  FCrossOS_ABI:=TABI.default;
 
   FMajorVersion   := -1;
   FMinorVersion   := -1;

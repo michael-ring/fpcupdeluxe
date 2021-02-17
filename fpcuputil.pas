@@ -347,9 +347,11 @@ function SaveFileFromResource(filename,resourcename:string):boolean;
 function SaveInisFromResource(filename,resourcename:string):boolean;
 // Searches for SearchFor in the stringlist and returns the index if found; -1 if not
 // Search optionally starts from position SearchFor
-function StringsStartsWith(const SearchIn:array of string; SearchFor:string; StartIndex:integer; CS:boolean): integer;
+function StringsStartsWith(const SearchIn:array of string; SearchFor:string; StartIndex:integer=0; CS:boolean=false): integer;
+function StringsSame(const SearchIn:array of string; SearchFor:string;  StartIndex:integer=0; CS:boolean=false): integer;
 function StringListStartsWith(SearchIn:TStringList; SearchFor:string; StartIndex:integer=0; CS:boolean=false): integer;
 function StringListContains(SearchIn:TStringList; SearchFor:string; StartIndex:integer=0; CS:boolean=false): integer;
+function StringListSame(SearchIn:TStringList; SearchFor:string; StartIndex:integer=0; CS:boolean=false): integer;
 function GetTotalPhysicalMemory: DWord;
 function GetSwapFileSize: DWord;
 function XdgConfigHome: String;
@@ -396,7 +398,7 @@ function GetTargetCPUOS:string;
 function GetDistro:string;
 function GetFreeBSDVersion:byte;
 function checkGithubRelease(const aURL:string):string;
-{$IF FPC_FULLVERSION < 30300}
+{$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION < 30200)}
 Function Pos(Const Substr : string; Const Source : string; Offset : Sizeint = 1) : SizeInt;
 {$ENDIF}
 {$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION < 30000)}
@@ -2618,6 +2620,26 @@ begin
     result:=-1;
 end;
 
+function StringsSame(const SearchIn:array of string; SearchFor:string; StartIndex:integer; CS:boolean): integer;
+var
+  Found:boolean=false;
+  i:integer;
+begin
+  for i:=StartIndex to High(SearchIn) do
+  begin
+    if CS then
+      Found:=AnsiSameStr(SearchFor,TrimLeft(SearchIn[i]))
+    else
+      Found:=AnsiSameText(SearchFor,TrimLeft(SearchIn[i]));
+    if Found then break;
+  end;
+  if Found then
+    result:=i
+  else
+    result:=-1;
+end;
+
+
 function StringListStartsWith(SearchIn:TStringList; SearchFor:string; StartIndex:integer; CS:boolean): integer;
 var
   Found:boolean=false;
@@ -2656,6 +2678,24 @@ begin
     result:=-1;
 end;
 
+function StringListSame(SearchIn:TStringList; SearchFor:string; StartIndex:integer; CS:boolean): integer;
+var
+  Found:boolean=false;
+  i:integer;
+begin
+  for i:=StartIndex to Pred(SearchIn.Count) do
+  begin
+    if CS then
+      Found:=AnsiSameStr(SearchIn[i],SearchFor)
+    else
+      Found:=AnsiSameText(SearchIn[i],SearchFor);
+    if Found then break;
+  end;
+  if Found then
+    result:=i
+  else
+    result:=-1;
+end;
 
 function GetTotalPhysicalMemory: DWord;
 begin
@@ -4017,7 +4057,7 @@ begin
   end;
 end;
 
-{$IF FPC_FULLVERSION < 30300}
+{$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION < 30200)}
 Function Pos(Const Substr : string; Const Source : string; Offset : Sizeint = 1) : SizeInt;
 var
   i,MaxLen : SizeInt;
